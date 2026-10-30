@@ -1,0 +1,78 @@
+name: Build AZ Store APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Find Flutter project
+        shell: bash
+        run: |
+          set -e
+          if [ -f pubspec.yaml ]; then
+            echo "PROJECT_DIR=." >> "$GITHUB_ENV"
+          else
+            PUBSPEC="$(find . -type f -name pubspec.yaml -not -path '*/.dart_tool/*' -not -path './.git/*' -print -quit)"
+            if [ -z "$PUBSPEC" ]; then
+              echo "::error::No pubspec.yaml found. Upload the extracted project files, not only the ZIP, to run this workflow."
+              exit 1
+            fi
+            echo "PROJECT_DIR=$(dirname "$PUBSPEC")" >> "$GITHUB_ENV"
+          fi
+
+      - name: Generate Android platform files if missing
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: |
+          if [ ! -d android ]; then
+            flutter create --platforms=android --org com.azstore .
+          fi
+          sed -i 's/android:label="az_store"/android:label="AZ Store"/' android/app/src/main/AndroidManifest.xml
+          if ! grep -q 'android.permission.CAMERA' android/app/src/main/AndroidManifest.xml; then
+            sed -i '/<manifest /a\    <uses-permission android:name="android.permission.CAMERA" />' android/app/src/main/AndroidManifest.xml
+          fi
+
+      - name: Get dependencies
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: flutter pub get
+
+      - name: Generate launcher icons
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: dart run flutter_launcher_icons
+
+      - name: Analyze Dart source
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: flutter analyze lib --no-fatal-infos --no-fatal-warnings
+
+      - name: Build release APK
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: flutter build apk --release
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: AZ-Store-APK
+          path: ${{ env.PROJECT_DIR }}/build/app/outputs/flutter-apk/app-release.apk
+          if-no-files-found: error
+          retention-days: 14

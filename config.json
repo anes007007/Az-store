@@ -1,0 +1,9 @@
+{
+  "appName": "AZ Store",
+  "version": 1,
+  "mode": "offline",
+  "cloudEnabled": false,
+  "autoSync": false,
+  "defaultLanguage": "ar",
+  "supportedLanguages": ["ar", "fr", "en"]
+}
